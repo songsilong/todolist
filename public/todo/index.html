@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Todo List</title>
+	<link rel="stylesheet" href="assets/css/base.css">
+	<link rel="stylesheet" href="assets/css/index.css">
+	<link rel="stylesheet" href="/js/nprogress/nprogress.css">
+</head>
+
+<body>
+	<section class="todoapp">
+		<header class="header">
+			<h1>todos</h1>
+			<input type="text" class="new-todo" placeholder="What needs to be done?" autofocus id="task">
+		</header>
+		<!-- This section should be hidden by default and shown when there are todos -->
+		<section class="main">
+			<input class="toggle-all" type="checkbox">
+			<ul class="todo-list" id="todo-list">
+
+			</ul>
+		</section>
+		<!-- This footer should hidden by default and shown when there are todos -->
+		<footer class="footer">
+			<!-- This should be `0 items left` by default -->
+			<span class="todo-count"><strong id="count">0</strong> item left</span>
+			<!-- Remove this if you don't implement routing -->
+			<ul class="filters">
+				<li>
+					<a class="selected" href="javascript:;">All</a>
+				</li>
+				<li>
+					<a class='active' href="javascript:;">Active</a>
+				</li>
+				<li>
+					<a class='completed' href="javascript:;">Completed</a>
+				</li>
+			</ul>
+			<!-- Hidden if no completed items are left ↓ -->
+			<button class="clear-completed">Clear completed</button>
+		</footer>
+	</section>
+	<script src="/js/jquery.min.js"></script>
+	<script src="/js/template-web.js"></script>
+	<!-- 创建模板 -->
+	<script type="text/html" id='tpl'>
+		{{each list}}
+		<li class="{{$value.completed ? 'completed' : ''}}">
+			<div class="view">
+				<input class="toggle" type="checkbox" {{$value.completed ? 'checked' : ''}}>
+				<label>{{$value.title}}</label>
+				<button class="destroy" data-id='{{$value._id}}'></button>
+			</div>
+			<input class="edit" value="Create a TodoMVC template">
+		</li>
+		{{/each}}
+	</script>
+	<script>
+		// 任务状态及数量统计
+		// 添加事件
+		$('.filters .selected').on('click', function () {
+			newtodoAry = todoAry;
+			render(newtodoAry);
+		})
+		$('.filters .active').on('click', function () {
+			newtodoAry = todoAry.filter(item => { return item.completed == true });
+			render(newtodoAry);
+		})
+		$('.filters .completed').on('click', function () {
+			newtodoAry = todoAry.filter(item => { return item.completed == false });
+			render(newtodoAry);
+		})
+		// 清除所有完成的任务
+		$('.clear-completed').on('click', function () {
+			// 发送删除的ajax请求
+			$.ajax({
+				url: '/todo/clearTask',
+				type: 'GET',
+				success: function () {
+					// 找到数组中的对应元素并删除
+					todoAry = todoAry.filter(item => item.completed == false);
+					// 重新渲染页面
+					render(todoAry);
+					count(todoAry);
+				}
+			})
+		})
+		// 创建渲染函数
+		function render(todoAry) {
+			// 模板拼接字符串
+			let html = template('tpl', { list: todoAry });
+			// 将字符串添加到页面上
+			$('#todo-list').html(html);
+		}
+		// 定义函数计算不同任务状态的数量
+		function count(array) {
+			const num = array.filter(item => { return item.completed == false }).length;
+			$('#count').html(num);
+		}
+		// 新建数组保存取过来的数据库中的数据
+		let todoAry = [];
+		let newtodoAry = [];
+		// 将数据库中的数据渲染到页面上
+		$.ajax({
+			type: 'GET',
+			url: '/todo/task',
+			success: function (res) {
+				todoAry = res;
+				render(todoAry);
+				count(todoAry);
+			}
+		})
+		// 新增数据
+		$('#task').on('keyup', function (e) {
+			// 按下enter键后
+			if (e.keyCode == 13) {
+				// 输入内容为空时
+				if ($(this).val().trim().length == 0) {
+					alert('请输入内容');
+					return;
+				}
+				// 输入内容已存在时
+				let isExist = todoAry.findIndex((item) => {
+					return item.title == $(this).val().trim();
+				})
+				if (isExist != -1) {
+					alert('输入内容已存在');
+					return;
+				} else {
+					// 添加数据
+					$.ajax({
+						type: 'POST',
+						url: '/todo/addTask',
+						contentType: 'application/json',
+						data: JSON.stringify({ title: $(this).val().trim() }),
+						success: function (res) {
+							todoAry.push(res);
+							// 渲染页面
+							render(todoAry);
+							count(todoAry);
+							// 将表单内容清空
+							$('#task').val('');
+						}
+					})
+				}
+			}
+		})
+		// 删除数据
+		// 根据id查找到需要删除的元素
+		$('#todo-list').on('click', '.destroy', function (e) {
+			let id = $(e.target).attr('data-id');
+			$.ajax({
+				url: '/todo/deleteTask',
+				type: 'GET',
+				data: {
+					_id: id
+				},
+				success: function (res) {
+					// 根据返回的id值找到数组中的对应元素并删除
+					let index = todoAry.findIndex(item => item._id == res._id);
+					// 删除数组中对应的元素
+					todoAry.splice(index, 1);
+					// 重新渲染页面
+					render(todoAry);
+					count(todoAry);
+				}
+			})
+		})
+		// 更改任务状态
+		$('#todo-list').on('change', '.toggle', function () {
+			// 获取当前数据的id
+			let id = $(this).siblings('.destroy').attr('data-id');
+			let title = $(this).siblings('label').text();
+			let isChecked = $(this).prop('checked');
+			// 发送ajax请求
+			$.ajax({
+				type: 'POST',
+				url: '/todo/modifyTask',
+				contentType: 'application/json',
+				data: JSON.stringify({ _id: id, title: title, completed: isChecked }),
+				success: function (res) {
+					// 修改数组数据
+					let index = todoAry.findIndex(item => item._id == res._id);
+					todoAry.splice(index, 1, res);
+					// 渲染页面
+					render(todoAry);
+					count(todoAry);
+				}
+			})
+		})
+		// 修改数据
+		$('#todo-list').on('dblclick', 'label', function () {
+			$(this).parents('li').addClass('editing');
+			$(this).parent().next().val($(this).text());
+			$(this).parent().next().focus();
+		})
+		// 失去焦点事件
+		$('#todo-list').on('blur', '.edit', function () {
+			// 获取需要修改内容的id和修改内容
+			let id = $(this).prev().children('button').attr('data-id');
+			let title = $(this).val();
+			// 输入内容为空时
+			if ($(this).val().trim().length == 0) {
+				alert('请输入内容');
+				return;
+			}
+			// 输入内容已存在时
+			let isExist = todoAry.findIndex((item) => {
+				if (item._id != id) {
+					return item.title == $(this).val().trim();
+				}
+			})
+			if (isExist != -1) {
+				alert('输入内容已存在');
+				return;
+			} else {
+				// 发送ajax请求
+				$.ajax({
+					type: 'POST',
+					url: '/todo/modifyTask',
+					contentType: 'application/json',
+					data: JSON.stringify({ _id: id, title: title }),
+					success: function (res) {
+						// 修改数组数据
+						let index = todoAry.findIndex(item => item._id == res._id);
+						todoAry.splice(index, 1, res);
+						// 渲染页面
+						render(todoAry);
+						count(todoAry);
+					}
+				})
+			}
+		})
+	</script>
+</body>
+
+</html>
